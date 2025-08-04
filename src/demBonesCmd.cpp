@@ -364,6 +364,13 @@ MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
 
     // TODO: 使用现有的骨骼权重。目前这部分代码被注释掉了。
     Eigen::MatrixXd wd(0, 0);
+      /*if (importer.wT.size() != 0) {
+    wd = MatrixXd::Zero(model.nB, model.nV);
+    for (int j = 0; j < model.nB; j++){
+      wd.row(j) = importer.wT[model.boneName[j]].transpose();
+    }
+    }*/
+
     model_.w = (wd / model_.nS).sparseView(1, 1e-20);
 
     bool hasKeyFrame = true; // 假设有关键帧数据
