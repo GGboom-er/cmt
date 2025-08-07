@@ -339,7 +339,8 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
       MDGContextGuard frameGuard(MDGContext(frameTime));
 
       MPointArray points;
-      fnMesh.getPointsAtTime(points, frameTime, MSpace::kWorld);
+      status = fnMesh.getPoints(points, MSpace::kWorld);
+      CHECK_MSTATUS_AND_RETURN_IT(status);
 
 #pragma omp parallel for
       for (int i = 0; i < model.nV; i++) {
@@ -375,7 +376,8 @@ MStatus DemBonesCmd::readBindPose(Model& model) {
   MFnMesh fnMesh(pathMesh_, &status);
   CHECK_MSTATUS_AND_RETURN_IT(status);
   MPointArray points;
-  fnMesh.getPointsAtTime(points, time, MSpace::kWorld);
+  status = fnMesh.getPoints(points, MSpace::kWorld);
+  CHECK_MSTATUS_AND_RETURN_IT(status);
 
   model.u.resize(model.nS * 3, model.nV);
   Eigen::MatrixXd v;
