@@ -18,10 +18,11 @@
 #include <maya/MFnSet.h>
 #include <maya/MFnSkinCluster.h>
 #include <maya/MFnTransform.h>
-#include <maya/MMatrix.h>
 #include <maya/MGlobal.h>
+#include <maya/MMatrix.h>
 #include <maya/MPlug.h>
 #include <maya/MTime.h>
+
 #include <sstream>
 
 const char* DemBonesCmd::kWeightsSmoothStepShort = "-wss";
@@ -239,39 +240,36 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
   model.m.resize(model.nF * 4, model.nB * 4);
   std::vector<Eigen::Matrix4d> bindInverse(model.nB);
 
-
   // Get bone info without altering the global time
   MTime time(0.0);
   {
     MDGContextGuard timeGuard(MDGContext(time));
-    model_.boneName.resize(model_.nB);
-    for (unsigned int i = 0; i < model_.nB; ++i) {
-      model_.boneName[i] = pathBones_[i].partialPathName().asChar();
+    model.boneName.resize(model.nB);
+    for (unsigned int i = 0; i < model.nB; ++i) {
+      model.boneName[i] = pathBones_[i].partialPathName().asChar();
     }
 
-    model_.parent.resize(model_.nB);
-    model_.bind.resize(model_.nS * 4, model_.nB * 4);
-    model_.preMulInv.resize(model_.nS * 4, model_.nB * 4);
-    model_.rotOrder.resize(model_.nS * 3, model_.nB);
+    model.parent.resize(model.nB);
+    model.bind.resize(model.nS * 4, model.nB * 4);
+    model.preMulInv.resize(model.nS * 4, model.nB * 4);
+    model.rotOrder.resize(model.nS * 3, model.nB);
     int s = 0;
 
-    for (int j = 0; j < model_.nB; j++) {
-      std::string nj = model_.boneName[j];
+    for (int j = 0; j < model.nB; j++) {
+      std::string nj = model.boneName[j];
 
-      model_.parent(j) = -1;
+      model.parent(j) = -1;
       MDagPath parent(pathBones_[j]);
       status = parent.pop();
       if (!MFAIL(status)) {
-        for (int k = 0; k < model_.nB; k++) {
-          if (model_.boneName[k] == parent.partialPathName().asChar()) {
-            model_.parent(j) = k;
+        for (int k = 0; k < model.nB; k++) {
+          if (model.boneName[k] == parent.partialPathName().asChar()) {
+            model.parent(j) = k;
           }
-
         }
       }
 
-
-      model_.bind.blk4(s, j) = toMatrix4d(pathBones_[j].inclusiveMatrix());
+      model.bind.blk4(s, j) = toMatrix4d(pathBones_[j].inclusiveMatrix());
 
       MFnTransform fnTransform(pathBones_[j], &status);
       CHECK_MSTATUS_AND_RETURN_IT(status);
@@ -279,22 +277,22 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
       fnTransform.getRotation(rotation);
       switch (rotation.order) {
         case MEulerRotation::kXYZ:
-          model_.rotOrder.vec3(s, j) = Eigen::Vector3i(0, 1, 2);
+          model.rotOrder.vec3(s, j) = Eigen::Vector3i(0, 1, 2);
           break;
         case MEulerRotation::kYZX:
-          model_.rotOrder.vec3(s, j) = Eigen::Vector3i(1, 2, 0);
+          model.rotOrder.vec3(s, j) = Eigen::Vector3i(1, 2, 0);
           break;
         case MEulerRotation::kZXY:
-          model_.rotOrder.vec3(s, j) = Eigen::Vector3i(2, 0, 1);
+          model.rotOrder.vec3(s, j) = Eigen::Vector3i(2, 0, 1);
           break;
         case MEulerRotation::kXZY:
-          model_.rotOrder.vec3(s, j) = Eigen::Vector3i(0, 2, 1);
+          model.rotOrder.vec3(s, j) = Eigen::Vector3i(0, 2, 1);
           break;
         case MEulerRotation::kYXZ:
-          model_.rotOrder.vec3(s, j) = Eigen::Vector3i(1, 0, 2);
+          model.rotOrder.vec3(s, j) = Eigen::Vector3i(1, 0, 2);
           break;
         case MEulerRotation::kZYX:
-          model_.rotOrder.vec3(s, j) = Eigen::Vector3i(2, 1, 0);
+          model.rotOrder.vec3(s, j) = Eigen::Vector3i(2, 1, 0);
           break;
       }
 
@@ -308,10 +306,9 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
         Matrix4d gjp = Map<Matrix4d>((double*)(jn[j].pParentJoint->EvaluateGlobalTransform()));
         preMulInv =  gp.inverse() * gjp;
       }*/
-      model_.preMulInv.blk4(s, j) = toMatrix4d(preMulInv);
+      model.preMulInv.blk4(s, j) = toMatrix4d(preMulInv);
       bindInverse[j] = toMatrix4d(pathBones_[j].inclusiveMatrixInverse());
     }
-
   }
 
   // TODO: Use existing bone weight
@@ -329,14 +326,13 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
     model.m.resize(0, 0);
   }
 
-
-  for (int s = 0; s < model_.nS; s++) {
-    int start = model_.fStart(s);
+  for (int s = 0; s < model.nS; s++) {
+    int start = model.fStart(s);
     // Read vertex data each frame without changing the global time
-    for (int f = 0; f < model_.nF; ++f) {
+    for (int f = 0; f < model.nF; ++f) {
       double frame = startFrame + static_cast<double>(f);
       MTime frameTime(frame);
-      model_.fTime(start + f) = frame;
+      model.fTime(start + f) = frame;
 
       MDGContextGuard frameGuard(MDGContext(frameTime));
 
@@ -348,11 +344,9 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
         model.v.col(i).segment<3>((start + f) * 3) << points[i].x, points[i].y, points[i].z;
       }
 
-
 #pragma omp parallel for
-      for (int j = 0; j < model_.nB; ++j) {
-        model_.m.blk4(f, j) = toMatrix4d(pathBones_[j].inclusiveMatrix()) * bindInverse[j];
-
+      for (int j = 0; j < model.nB; ++j) {
+        model.m.blk4(f, j) = toMatrix4d(pathBones_[j].inclusiveMatrix()) * bindInverse[j];
       }
     }
     model.fStart(s + 1) = model.fStart(s) + model.nF;
