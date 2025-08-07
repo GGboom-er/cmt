@@ -35,7 +35,7 @@ class MyDemBones : public DemBonesExt<double, AniMeshScalar> {
 
   void cbWeightsEnd() { std::cout << " Done! "; }
 
-  void cbTranformationsBegin() { std::cout << "Updating trans"; }
+  void cbTransformationsBegin() { std::cout << "Updating trans"; }
 
   void cbTransformationsEnd() { std::cout << " Done! "; }
 
@@ -46,10 +46,10 @@ class MyDemBones : public DemBonesExt<double, AniMeshScalar> {
 
 class DemBonesCmd : public MPxCommand {
  public:
-  virtual MStatus doIt(const MArgList& argList);
-  virtual MStatus redoIt();
-  virtual MStatus undoIt();
-  virtual bool isUndoable() const;
+  MStatus doIt(const MArgList& argList) override;
+  MStatus redoIt() override;
+  MStatus undoIt() override;
+  bool isUndoable() const override;
 
   static void* creator();
   static MSyntax newSyntax();
