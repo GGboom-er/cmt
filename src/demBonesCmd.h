@@ -15,13 +15,13 @@
 #include "DemBones/DemBonesExt.h"
 
 // Standard library
+#include <Eigen/Core>
+#include <Eigen/Sparse>
 #include <iostream>
 #include <variant>
 
-using namespace Dem;
-
 template <typename AniMeshScalar>
-class MyDemBones : public DemBonesExt<double, AniMeshScalar> {
+class MyDemBones : public Dem::DemBonesExt<double, AniMeshScalar> {
  public:
   void cbIterBegin() { std::cout << "    Iter #" << iter << ": "; }
 
