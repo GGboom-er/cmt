@@ -19,8 +19,10 @@
 #include <maya/MFnSkinCluster.h>
 #include <maya/MFnTransform.h>
 #include <maya/MMatrix.h>
+#include <maya/MGlobal.h>
 #include <maya/MPlug.h>
 #include <maya/MTime.h>
+#include <sstream>
 
 const char* DemBonesCmd::kWeightsSmoothStepShort = "-wss";
 const char* DemBonesCmd::kWeightsSmoothStepLong = "-weightsSmoothStep";
@@ -56,7 +58,7 @@ const MString DemBonesCmd::kName("demBones");
 
 void* DemBonesCmd::creator() { return new DemBonesCmd; }
 
-bool DemBonesCmd::isUndoable() const { return true; }
+bool DemBonesCmd::isUndoable() const { return false; }
 
 MSyntax DemBonesCmd::newSyntax() {
   MSyntax syntax;
@@ -70,7 +72,7 @@ MSyntax DemBonesCmd::newSyntax() {
   syntax.addFlag(kBindUpdateShort, kBindUpdateLong, MSyntax::kBoolean);
   syntax.addFlag(kTransItersShort, kTransItersLong, MSyntax::kLong);
   syntax.addFlag(kItersShort, kItersLong, MSyntax::kLong);
-  syntax.addFlag(kInitItersShort, kItersLong, MSyntax::kLong);
+  syntax.addFlag(kInitItersShort, kInitItersLong, MSyntax::kLong);
   syntax.addFlag(kBonesShort, kBonesLong, MSyntax::kLong);
   syntax.addFlag(kStartFrameShort, kStartFrameLong, MSyntax::kDouble);
   syntax.addFlag(kEndFrameShort, kEndFrameLong, MSyntax::kDouble);
@@ -181,7 +183,7 @@ MStatus DemBonesCmd::doIt(const MArgList& argList) {
     }
 
     if (argData.isFlagSet(kInitItersShort)) {
-      model.nInitIters = argData.flagArgumentDouble(kInitItersShort, 0, &status);
+      model.nInitIters = argData.flagArgumentInt(kInitItersShort, 0, &status);
       if (status != MS::kSuccess) return status;
     }
 
@@ -199,9 +201,12 @@ MStatus DemBonesCmd::doIt(const MArgList& argList) {
 
       model.nB = argData.flagArgumentInt(kBonesShort, 0, &status);
       if (status != MS::kSuccess) return status;
-      std::cout << "Initializing bones: 1";
+      {
+        std::ostringstream oss;
+        oss << "Initializing bones: " << model.nB;
+        MGlobal::displayInfo(oss.str().c_str());
+      }
       model.init();
-      std::cout << std::endl;
     }
 
     std::cout << "Computing Skinning Decomposition:\n";
@@ -232,6 +237,7 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
   model.fStart(0) = 0;
   model.nB = pathBones_.length();
   model.m.resize(model.nF * 4, model.nB * 4);
+  std::vector<Eigen::Matrix4d> bindInverse(model.nB);
 
 
   // Get bone info without altering the global time
@@ -303,6 +309,7 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
         preMulInv =  gp.inverse() * gjp;
       }*/
       model_.preMulInv.blk4(s, j) = toMatrix4d(preMulInv);
+      bindInverse[j] = toMatrix4d(pathBones_[j].inclusiveMatrixInverse());
     }
 
   }
