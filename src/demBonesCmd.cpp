@@ -229,6 +229,7 @@ MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
   model_.bind.resize(model_.nS * 4, model_.nB * 4);
   model_.preMulInv.resize(model_.nS * 4, model_.nB * 4);
   model_.rotOrder.resize(model_.nS * 3, model_.nB);
+  std::vector<Eigen::Matrix4d> bindInverse(model_.nB);
   int s = 0;
 
   for (int j = 0; j < model_.nB; j++) {
@@ -245,7 +246,9 @@ MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
       }
     }
 
-    model_.bind.blk4(s, j) = toMatrix4d(pathBones_[j].inclusiveMatrix());
+    Eigen::Matrix4d bind = toMatrix4d(pathBones_[j].inclusiveMatrix());
+    model_.bind.blk4(s, j) = bind;
+    bindInverse[j] = bind.inverse();
 
     MFnTransform fnTransform(pathBones_[j], &status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
@@ -317,9 +320,9 @@ MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
         model_.v.col(i).segment<3>((start + f) * 3) << points[i].x, points[i].y, points[i].z;
       }
 
+#pragma omp parallel for
       for (int j = 0; j < model_.nB; ++j) {
-        model_.m.blk4(f, j) =
-            toMatrix4d(pathBones_[j].inclusiveMatrix()) * model_.bind.blk4(s, j).inverse();
+        model_.m.blk4(f, j) = toMatrix4d(pathBones_[j].inclusiveMatrix()) * bindInverse[j];
       }
     }
     model_.fStart(s + 1) = model_.fStart(s) + model_.nF;
