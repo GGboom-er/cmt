@@ -1,8 +1,6 @@
 #ifndef CMT_DEMBONESCMD_H
 #define CMT_DEMBONESCMD_H
 
-#include "DemBones/DemBonesExt.h"
-
 #include <maya/MArgDatabase.h>
 #include <maya/MArgList.h>
 #include <maya/MDGModifier.h>
@@ -14,11 +12,16 @@
 #include <maya/MSelectionList.h>
 #include <maya/MSyntax.h>
 
+#include "DemBones/DemBonesExt.h"
+
+// Standard library
 #include <iostream>
+#include <variant>
 
 using namespace Dem;
 
-class MyDemBones : public DemBonesExt<double, float> {
+template <typename AniMeshScalar>
+class MyDemBones : public DemBonesExt<double, AniMeshScalar> {
  public:
   void cbIterBegin() { std::cout << "    Iter #" << iter << ": "; }
 
@@ -80,16 +83,22 @@ class DemBonesCmd : public MPxCommand {
   static const char* kEndFrameLong;
   static const char* kExistingBonesShort;
   static const char* kExistingBonesLong;
+  static const char* kDoubleAniMeshShort;
+  static const char* kDoubleAniMeshLong;
 
  private:
-  MStatus readMeshSequence(double startFrame, double endFrame);
-  MStatus readBindPose();
+  template <typename Model>
+  MStatus readMeshSequence(Model& model, double startFrame, double endFrame);
+  template <typename Model>
+  MStatus readBindPose(Model& model);
   MStatus setKeyframes(const Eigen::VectorXd& val, const Eigen::VectorXd& fTime,
                        const MDagPath& pathJoint, const MString& attributeName);
-  MStatus setSkinCluster(const std::vector<std::string>& name, const Eigen::SparseMatrix<double>& w, const Eigen::MatrixXd& gb);
+  MStatus setSkinCluster(const std::vector<std::string>& name, const Eigen::SparseMatrix<double>& w,
+                         const Eigen::MatrixXd& gb);
   Eigen::Matrix4d toMatrix4d(const MMatrix& m);
 
-  MyDemBones model_;
+  std::variant<MyDemBones<float>, MyDemBones<double>> model_;
+  bool useDoubleAniMesh_;
   MDGModifier dgMod_;
   MString name_;
   MDagPath pathMesh_;

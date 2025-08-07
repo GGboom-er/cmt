@@ -50,6 +50,8 @@ const char* DemBonesCmd::kEndFrameShort = "-ef";
 const char* DemBonesCmd::kEndFrameLong = "-endFrame";
 const char* DemBonesCmd::kExistingBonesShort = "-eb";
 const char* DemBonesCmd::kExistingBonesLong = "-existingBones";
+const char* DemBonesCmd::kDoubleAniMeshShort = "-dam";
+const char* DemBonesCmd::kDoubleAniMeshLong = "-doubleAniMesh";
 const MString DemBonesCmd::kName("demBones");
 
 void* DemBonesCmd::creator() { return new DemBonesCmd; }
@@ -74,6 +76,7 @@ MSyntax DemBonesCmd::newSyntax() {
   syntax.addFlag(kEndFrameShort, kEndFrameLong, MSyntax::kDouble);
   syntax.addFlag(kExistingBonesShort, kExistingBonesLong, MSyntax::kString);
   syntax.makeFlagMultiUse(kExistingBonesShort);
+  syntax.addFlag(kDoubleAniMeshShort, kDoubleAniMeshLong, MSyntax::kNoArg);
 
   syntax.setObjectType(MSyntax::kSelectionList, 1, 1);
   syntax.useSelectionAsDefault(true);
@@ -125,95 +128,111 @@ MStatus DemBonesCmd::doIt(const MArgList& argList) {
       CHECK_MSTATUS_AND_RETURN_IT(status);
     }
   }
-
-  status = readMeshSequence(startFrame, endFrame);
-  CHECK_MSTATUS_AND_RETURN_IT(status);
-
-  status = readBindPose();
-  CHECK_MSTATUS_AND_RETURN_IT(status);
-
-  if (argData.isFlagSet(kItersShort)) {
-    model_.nIters = argData.flagArgumentInt(kItersShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  if (argData.isFlagSet(kTransItersShort)) {
-    model_.nTransIters = argData.flagArgumentInt(kTransItersShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  if (argData.isFlagSet(kWeightItersShort)) {
-    model_.nWeightsIters = argData.flagArgumentInt(kWeightItersShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  if (argData.isFlagSet(kBindUpdateShort)) {
-    model_.bindUpdate = static_cast<int>(argData.flagArgumentBool(kBindUpdateShort, 0, &status));
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  if (argData.isFlagSet(kTransAffineShort)) {
-    model_.transAffine = argData.flagArgumentDouble(kTransAffineShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  if (argData.isFlagSet(kTransAffineNormShort)) {
-    model_.transAffineNorm = argData.flagArgumentDouble(kTransAffineNormShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  if (argData.isFlagSet(kNumNonZeroShort)) {
-    model_.nnz = argData.flagArgumentInt(kNumNonZeroShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  if (argData.isFlagSet(kWeightsSmoothShort)) {
-    model_.weightsSmooth = argData.flagArgumentDouble(kWeightsSmoothShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  if (argData.isFlagSet(kWeightsSmoothStepShort)) {
-    model_.weightsSmoothStep = argData.flagArgumentDouble(kWeightsSmoothStepShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
+  useDoubleAniMesh_ = argData.isFlagSet(kDoubleAniMeshShort);
+  if (useDoubleAniMesh_) {
+    model_.emplace<MyDemBones<double>>();
+  } else {
+    model_.emplace<MyDemBones<float>>();
   }
 
-  if (argData.isFlagSet(kInitItersShort)) {
-    model_.nInitIters = argData.flagArgumentDouble(kInitItersShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
+  auto execModel = [&](auto& model) -> MStatus {
+    MStatus status;
+    status = readMeshSequence(model, startFrame, endFrame);
+    if (status != MS::kSuccess) return status;
 
-  if (argData.isFlagSet(kBonesShort) && model_.nB > 0) {
-    int boneCount = argData.flagArgumentInt(kBonesShort, 0, &status);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-    model_.nB += boneCount;
-  }
+    status = readBindPose(model);
+    if (status != MS::kSuccess) return status;
 
-  if (model_.nB == 0) {
-    if (!argData.isFlagSet(kBonesShort)) {
-      MGlobal::displayError("No joints found. Need to set the number of bones (-b/-bones)");
-      return MS::kInvalidParameter;
+    if (argData.isFlagSet(kItersShort)) {
+      model.nIters = argData.flagArgumentInt(kItersShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+    }
+    if (argData.isFlagSet(kTransItersShort)) {
+      model.nTransIters = argData.flagArgumentInt(kTransItersShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+    }
+    if (argData.isFlagSet(kWeightItersShort)) {
+      model.nWeightsIters = argData.flagArgumentInt(kWeightItersShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+    }
+    if (argData.isFlagSet(kBindUpdateShort)) {
+      model.bindUpdate = static_cast<int>(argData.flagArgumentBool(kBindUpdateShort, 0, &status));
+      if (status != MS::kSuccess) return status;
+    }
+    if (argData.isFlagSet(kTransAffineShort)) {
+      model.transAffine = argData.flagArgumentDouble(kTransAffineShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+    }
+    if (argData.isFlagSet(kTransAffineNormShort)) {
+      model.transAffineNorm = argData.flagArgumentDouble(kTransAffineNormShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+    }
+    if (argData.isFlagSet(kNumNonZeroShort)) {
+      model.nnz = argData.flagArgumentInt(kNumNonZeroShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+    }
+    if (argData.isFlagSet(kWeightsSmoothShort)) {
+      model.weightsSmooth = argData.flagArgumentDouble(kWeightsSmoothShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+    }
+    if (argData.isFlagSet(kWeightsSmoothStepShort)) {
+      model.weightsSmoothStep = argData.flagArgumentDouble(kWeightsSmoothStepShort, 0, &status);
+      if (status != MS::kSuccess) return status;
     }
 
-    model_.nB = argData.flagArgumentInt(kBonesShort, 0, &status);
-    std::cout << "Initializing bones: 1";
-    model_.init();
-    std::cout << std::endl;
-  }
+    if (argData.isFlagSet(kInitItersShort)) {
+      model.nInitIters = argData.flagArgumentDouble(kInitItersShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+    }
 
-  std::cout << "Computing Skinning Decomposition:\n";
-  if (!model_.compute()) {
-    return MS::kFailure;
-  }
+    if (argData.isFlagSet(kBonesShort) && model.nB > 0) {
+      int boneCount = argData.flagArgumentInt(kBonesShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+      model.nB += boneCount;
+    }
+
+    if (model.nB == 0) {
+      if (!argData.isFlagSet(kBonesShort)) {
+        MGlobal::displayError("No joints found. Need to set the number of bones (-b/-bones)");
+        return MS::kInvalidParameter;
+      }
+
+      model.nB = argData.flagArgumentInt(kBonesShort, 0, &status);
+      if (status != MS::kSuccess) return status;
+      std::cout << "Initializing bones: 1";
+      model.init();
+      std::cout << std::endl;
+    }
+
+    std::cout << "Computing Skinning Decomposition:\n";
+    if (!model.compute()) {
+      return MS::kFailure;
+    }
+    return MS::kSuccess;
+  };
+
+  status = std::visit(execModel, model_);
+  CHECK_MSTATUS_AND_RETURN_IT(status);
 
   return redoIt();
 }
 
-MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
+template <typename Model>
+MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double endFrame) {
   MStatus status;
-  model_.nS = 1;
-  model_.nF = static_cast<int>(endFrame - startFrame + 1.0);
+  model.nS = 1;
+  model.nF = static_cast<int>(endFrame - startFrame + 1.0);
 
   MFnMesh fnMesh(pathMesh_, &status);
   CHECK_MSTATUS_AND_RETURN_IT(status);
-  model_.nV = fnMesh.numVertices();
-  model_.v.resize(3 * model_.nF, model_.nV);
-  model_.fTime.resize(model_.nF);
-  model_.fStart.resize(model_.nS + 1);
-  model_.fStart(0) = 0;
-  model_.nB = pathBones_.length();
-  model_.m.resize(model_.nF * 4, model_.nB * 4);
+  model.nV = fnMesh.numVertices();
+  model.v.resize(3 * model.nF, model.nV);
+  model.fTime.resize(model.nF);
+  model.fStart.resize(model.nS + 1);
+  model.fStart(0) = 0;
+  model.nB = pathBones_.length();
+  model.m.resize(model.nF * 4, model.nB * 4);
+
 
   // Get bone info without altering the global time
   MTime time(0.0);
@@ -241,8 +260,10 @@ MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
           if (model_.boneName[k] == parent.partialPathName().asChar()) {
             model_.parent(j) = k;
           }
+
         }
       }
+
 
       model_.bind.blk4(s, j) = toMatrix4d(pathBones_[j].inclusiveMatrix());
 
@@ -283,6 +304,7 @@ MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
       }*/
       model_.preMulInv.blk4(s, j) = toMatrix4d(preMulInv);
     }
+
   }
 
   // TODO: Use existing bone weight
@@ -294,11 +316,12 @@ MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
     }
   }*/
 
-  model_.w = (wd / model_.nS).sparseView(1, 1e-20);
+  model.w = (wd / model.nS).sparseView(1, 1e-20);
   bool hasKeyFrame = true;
   if (!hasKeyFrame) {
-    model_.m.resize(0, 0);
+    model.m.resize(0, 0);
   }
+
 
   for (int s = 0; s < model_.nS; s++) {
     int start = model_.fStart(s);
@@ -309,35 +332,39 @@ MStatus DemBonesCmd::readMeshSequence(double startFrame, double endFrame) {
       model_.fTime(start + f) = frame;
 
       MDGContextGuard frameGuard(MDGContext(frameTime));
+
       MPointArray points;
       fnMesh.getPointsAtTime(points, frameTime, MSpace::kWorld);
 
 #pragma omp parallel for
-      for (int i = 0; i < model_.nV; i++) {
-        model_.v.col(i).segment<3>((start + f) * 3) << points[i].x, points[i].y, points[i].z;
+      for (int i = 0; i < model.nV; i++) {
+        model.v.col(i).segment<3>((start + f) * 3) << points[i].x, points[i].y, points[i].z;
       }
 
+
+#pragma omp parallel for
       for (int j = 0; j < model_.nB; ++j) {
-        model_.m.blk4(f, j) =
-            toMatrix4d(pathBones_[j].inclusiveMatrix()) * model_.bind.blk4(s, j).inverse();
+        model_.m.blk4(f, j) = toMatrix4d(pathBones_[j].inclusiveMatrix()) * bindInverse[j];
+
       }
     }
-    model_.fStart(s + 1) = model_.fStart(s) + model_.nF;
+    model.fStart(s + 1) = model.fStart(s) + model.nF;
   }
 
-  model_.origM = model_.m;
+  model.origM = model.m;
 
-  model_.subjectID.resize(model_.nF);
-  for (int s = 0; s < model_.nS; s++) {
-    for (int k = model_.fStart(s); k < model_.fStart(s + 1); k++) {
-      model_.subjectID(k) = s;
+  model.subjectID.resize(model.nF);
+  for (int s = 0; s < model.nS; s++) {
+    for (int k = model.fStart(s); k < model.fStart(s + 1); k++) {
+      model.subjectID(k) = s;
     }
   }
 
   return MS::kSuccess;
 }
 
-MStatus DemBonesCmd::readBindPose() {
+template <typename Model>
+MStatus DemBonesCmd::readBindPose(Model& model) {
   MStatus status;
   MTime time(0.0);
   MDGContextGuard timeGuard(MDGContext(time));
@@ -347,23 +374,23 @@ MStatus DemBonesCmd::readBindPose() {
   MPointArray points;
   fnMesh.getPointsAtTime(points, time, MSpace::kWorld);
 
-  model_.u.resize(model_.nS * 3, model_.nV);
+  model.u.resize(model.nS * 3, model.nV);
   Eigen::MatrixXd v;
   v.resize(3, fnMesh.numVertices());
-  for (int i = 0; i < model_.nV; i++) {
+  for (int i = 0; i < model.nV; i++) {
     v.col(i) << points[i].x, points[i].y, points[i].z;
   }
 
-  model_.u.block(0, 0, 3, model_.nV) = v;
+  model.u.block(0, 0, 3, model.nV) = v;
 
   int numPolygons = fnMesh.numPolygons();
-  model_.fv.resize(numPolygons);
+  model.fv.resize(numPolygons);
   for (int i = 0; i < numPolygons; i++) {
     MIntArray vertexList;
     fnMesh.getPolygonVertices(i, vertexList);
-    model_.fv[i].resize(vertexList.length());
-    for (unsigned int j = 0; j < model_.fv[i].size(); ++j) {
-      model_.fv[i][j] = vertexList[j];
+    model.fv[i].resize(vertexList.length());
+    for (unsigned int j = 0; j < model.fv[i].size(); ++j) {
+      model.fv[i][j] = vertexList[j];
     }
   }
 
@@ -371,72 +398,71 @@ MStatus DemBonesCmd::readBindPose() {
 }
 
 MStatus DemBonesCmd::redoIt() {
-  MStatus status;
-  clearResult();
+  return std::visit(
+      [&](auto& model) -> MStatus {
+        MStatus status;
+        clearResult();
 
-  bool needCreateJoints = (model_.boneName.size() != model_.nB);
-  std::vector<std::string> newBoneNames;
-  MStringArray joints;
+        bool needCreateJoints = (model.boneName.size() != model.nB);
+        std::vector<std::string> newBoneNames;
+        MStringArray joints;
 
-  if (needCreateJoints) {
-    // model.boneName.resize(model.nB);
-    int creationCount = model_.nB - static_cast<int>(model_.boneName.size());
-    for (int j = 0; j < creationCount; j++) {
-      std::ostringstream s;
-      s << "dembones_joint" << j;
-      model_.boneName.push_back(s.str());
-      newBoneNames.push_back(s.str());
-      joints.append(s.str().c_str());
-    }
-  }
-  for (int s = 0; s < model_.nS; ++s) {
-    Eigen::MatrixXd lr, lt, gb, lbr, lbt;
-    model_.computeRTB(s, lr, lt, gb, lbr, lbt, false);
+        if (needCreateJoints) {
+          int creationCount = model.nB - static_cast<int>(model.boneName.size());
+          for (int j = 0; j < creationCount; j++) {
+            std::ostringstream s;
+            s << "dembones_joint" << j;
+            model.boneName.push_back(s.str());
+            newBoneNames.push_back(s.str());
+            joints.append(s.str().c_str());
+          }
+        }
+        for (int s = 0; s < model.nS; ++s) {
+          Eigen::MatrixXd lr, lt, gb, lbr, lbt;
+          model.computeRTB(s, lr, lt, gb, lbr, lbt, false);
 
-    Eigen::VectorXd val;
-    for (int j = 0; j < newBoneNames.size(); ++j) {
-      MString name(newBoneNames[j].c_str());
-      MString cmd("createNode \"joint\" -n \"" + name + "\"");
-      MGlobal::executeCommand(cmd);
-    }
-    int startJointIdx = newBoneNames.size() == 0 ? 0 : model_.boneName.size() - newBoneNames.size();
-    for (int j = startJointIdx; j < model_.boneName.size(); ++j) {
-      MDagPath pathJoint;
-      status = getDagPath(model_.boneName[j].c_str(), pathJoint);
-      CHECK_MSTATUS_AND_RETURN_IT(status);
+          Eigen::VectorXd val;
+          for (int j = 0; j < newBoneNames.size(); ++j) {
+            MString name(newBoneNames[j].c_str());
+            MString cmd("createNode \"joint\" -n \"" + name + "\"");
+            MGlobal::executeCommand(cmd);
+          }
+          int startJointIdx =
+              newBoneNames.size() == 0 ? 0 : model.boneName.size() - newBoneNames.size();
+          for (int j = startJointIdx; j < model.boneName.size(); ++j) {
+            MDagPath pathJoint;
+            status = getDagPath(model.boneName[j].c_str(), pathJoint);
+            CHECK_MSTATUS_AND_RETURN_IT(status);
 
-      val = lr.col(j);
-      setKeyframes(
-          Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 0, val.size() / 3),
-          model_.fTime, pathJoint, "rx");
-      setKeyframes(
-          Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 1, val.size() / 3),
-          model_.fTime, pathJoint, "ry");
-      setKeyframes(
-          Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 2, val.size() / 3),
-          model_.fTime, pathJoint, "rz");
+            val = lr.col(j);
+            setKeyframes(Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 0,
+                                                                               val.size() / 3),
+                         model.fTime, pathJoint, "rx");
+            setKeyframes(Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 1,
+                                                                               val.size() / 3),
+                         model.fTime, pathJoint, "ry");
+            setKeyframes(Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 2,
+                                                                               val.size() / 3),
+                         model.fTime, pathJoint, "rz");
 
-      val = lt.col(j);
-      setKeyframes(
-          Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 0, val.size() / 3),
-          model_.fTime, pathJoint, "tx");
-      setKeyframes(
-          Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 1, val.size() / 3),
-          model_.fTime, pathJoint, "ty");
-      setKeyframes(
-          Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 2, val.size() / 3),
-          model_.fTime, pathJoint, "tz");
-    }
-    status = setSkinCluster(model_.boneName, model_.w, gb);
-    CHECK_MSTATUS_AND_RETURN_IT(status);
-  }
-  setResult(joints);
-  /*status = dgMod_.doIt();
-  CHECK_MSTATUS_AND_RETURN_IT(status);
-
-  setResult(name_);*/
-
-  return MS::kSuccess;
+            val = lt.col(j);
+            setKeyframes(Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 0,
+                                                                               val.size() / 3),
+                         model.fTime, pathJoint, "tx");
+            setKeyframes(Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 1,
+                                                                               val.size() / 3),
+                         model.fTime, pathJoint, "ty");
+            setKeyframes(Eigen::Map<Eigen::VectorXd, 0, Eigen::InnerStride<3>>(val.data() + 2,
+                                                                               val.size() / 3),
+                         model.fTime, pathJoint, "tz");
+          }
+          status = setSkinCluster(model.boneName, model.w, gb);
+          CHECK_MSTATUS_AND_RETURN_IT(status);
+        }
+        setResult(joints);
+        return MS::kSuccess;
+      },
+      model_);
 }
 
 MStatus DemBonesCmd::setKeyframes(const Eigen::VectorXd& val, const Eigen::VectorXd& fTime,
