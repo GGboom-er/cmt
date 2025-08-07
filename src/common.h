@@ -1,6 +1,8 @@
 #ifndef CMT_COMMON_H
 #define CMT_COMMON_H
 
+#include <maya/MArrayDataBuilder.h>
+#include <maya/MArrayDataHandle.h>
 #include <maya/MDagPath.h>
 #include <maya/MDoubleArray.h>
 #include <maya/MFloatVectorArray.h>
@@ -9,10 +11,10 @@
 #include <maya/MPoint.h>
 #include <maya/MPointArray.h>
 #include <maya/MString.h>
-#include <map>
-#include <vector>
-#include <set>
 
+#include <map>
+#include <set>
+#include <vector>
 
 MStatus JumpToElement(MArrayDataHandle& hArray, unsigned int index);
 
@@ -23,13 +25,11 @@ MStatus JumpToElement(MArrayDataHandle& hArray, unsigned int index);
 */
 void StartProgress(const MString& title, unsigned int count);
 
-
 /**
   Helper function to increase the progress bar by the specified amount.
   @param[in] step Step amount.
 */
 void StepProgress(int step);
-
 
 /**
   Check if the progress has been cancelled.
@@ -37,12 +37,10 @@ void StepProgress(int step);
 */
 bool ProgressCancelled();
 
-
 /**
   Ends any running progress bar.
 */
 void EndProgress();
-
 
 /**
   Checks if the path points to a shape node.
@@ -51,7 +49,6 @@ void EndProgress();
  */
 bool isShapeNode(MDagPath& path);
 
-
 /**
   Ensures that the given dag path points to a non-intermediate shape node.
   @param[in,out] path Path to a dag node that could be a transform or a shape.
@@ -59,8 +56,7 @@ bool isShapeNode(MDagPath& path);
   @param[in] intermediate true to get the intermediate shape.
   @return MStatus.
  */
-MStatus getShapeNode(MDagPath& path, bool intermediate=false);
-
+MStatus getShapeNode(MDagPath& path, bool intermediate = false);
 
 /**
   Get the MDagPath of an object.
@@ -76,13 +72,11 @@ MStatus getDagPath(const MString& name, MDagPath& path);
  */
 MStatus getDependNode(const MString& name, MObject& oNode);
 
-
 /**
   Delete all intermediate shapes of the given dag path.
   @param[in] path MDagPath.
  */
 MStatus DeleteIntermediateObjects(MDagPath& path);
-
 
 template <typename T>
 struct ThreadData {
@@ -92,22 +86,23 @@ struct ThreadData {
   T* pData;
 };
 
-
 /**
   Creates the data stuctures that will be sent to each thread.  Divides the vertices into
   discrete chunks to be evaluated in the threads.
   @param[in] taskCount The number of individual tasks we want to divide the calculation into.
   @param[in] elementCount The number of vertices or elements to be divided up.
   @param[in] taskData The TaskData or BindData object.
-  @param[out] threadData The array of ThreadData objects.  It is assumed the array is of size taskCount.
+  @param[out] threadData The array of ThreadData objects.  It is assumed the array is of size
+  taskCount.
 */
 template <typename T>
-void CreateThreadData(int taskCount, unsigned int elementCount, T* taskData, ThreadData<T>* threadData) {
+void CreateThreadData(int taskCount, unsigned int elementCount, T* taskData,
+                      ThreadData<T>* threadData) {
   unsigned int taskLength = (elementCount + taskCount - 1) / taskCount;
   unsigned int start = 0;
   unsigned int end = taskLength;
   int lastTask = taskCount - 1;
-  for(int i = 0; i < taskCount; i++) {
+  for (int i = 0; i < taskCount; i++) {
     if (i == lastTask) {
       end = elementCount;
     }
