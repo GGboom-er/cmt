@@ -21,7 +21,9 @@
 #include <maya/MGlobal.h>
 #include <maya/MMatrix.h>
 #include <maya/MPlug.h>
+#include <maya/MStringArray.h>
 #include <maya/MTime.h>
+#include <maya/MTimeArray.h>
 
 #include <sstream>
 
@@ -390,8 +392,8 @@ MStatus DemBonesCmd::readBindPose(Model& model) {
     MIntArray vertexList;
     fnMesh.getPolygonVertices(i, vertexList);
     model.fv[i].resize(vertexList.length());
-    for (unsigned int j = 0; j < model.fv[i].size(); ++j) {
-      model.fv[i][j] = vertexList[j];
+    for (size_t j = 0; j < model.fv[i].size(); ++j) {
+      model.fv[i][j] = vertexList[static_cast<unsigned int>(j)];
     }
   }
 
@@ -423,14 +425,15 @@ MStatus DemBonesCmd::redoIt() {
           model.computeRTB(s, lr, lt, gb, lbr, lbt, false);
 
           Eigen::VectorXd val;
-          for (int j = 0; j < newBoneNames.size(); ++j) {
+          for (int j = 0; j < static_cast<int>(newBoneNames.size()); ++j) {
             MString name(newBoneNames[j].c_str());
             MString cmd("createNode \"joint\" -n \"" + name + "\"");
             MGlobal::executeCommand(cmd);
           }
-          int startJointIdx =
-              newBoneNames.size() == 0 ? 0 : model.boneName.size() - newBoneNames.size();
-          for (int j = startJointIdx; j < model.boneName.size(); ++j) {
+          int startJointIdx = newBoneNames.empty()
+                                  ? 0
+                                  : static_cast<int>(model.boneName.size() - newBoneNames.size());
+          for (int j = startJointIdx; j < static_cast<int>(model.boneName.size()); ++j) {
             MDagPath pathJoint;
             status = getDagPath(model.boneName[j].c_str(), pathJoint);
             CHECK_MSTATUS_AND_RETURN_IT(status);
@@ -469,8 +472,7 @@ MStatus DemBonesCmd::redoIt() {
 MStatus DemBonesCmd::setKeyframes(const Eigen::VectorXd& val, const Eigen::VectorXd& fTime,
                                   const MDagPath& pathJoint, const MString& attributeName) {
   MStatus status;
-  int idx = 0;
-  int nFr = (int)fTime.size();
+  int nFr = static_cast<int>(fTime.size());
   MFnDagNode fnNode(pathJoint, &status);
   CHECK_MSTATUS_AND_RETURN_IT(status);
   MPlug plug = fnNode.findPlug(attributeName, false, &status);
