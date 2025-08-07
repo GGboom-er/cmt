@@ -243,10 +243,13 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
     model.boneName[i] = pathBones_[i].partialPathName().asChar();
   }
 
-  model.parent.resize(model.nB);
-  model.bind.resize(model.nS * 4, model.nB * 4);
-  model.preMulInv.resize(model.nS * 4, model.nB * 4);
-  model.rotOrder.resize(model.nS * 3, model.nB);
+
+  model_.parent.resize(model_.nB);
+  model_.bind.resize(model_.nS * 4, model_.nB * 4);
+  model_.preMulInv.resize(model_.nS * 4, model_.nB * 4);
+  model_.rotOrder.resize(model_.nS * 3, model_.nB);
+  std::vector<Eigen::Matrix4d> bindInverse(model_.nB);
+
   int s = 0;
 
   for (int j = 0; j < model.nB; j++) {
@@ -263,7 +266,11 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
       }
     }
 
-    model.bind.blk4(s, j) = toMatrix4d(pathBones_[j].inclusiveMatrix());
+
+    Eigen::Matrix4d bind = toMatrix4d(pathBones_[j].inclusiveMatrix());
+    model_.bind.blk4(s, j) = bind;
+    bindInverse[j] = bind.inverse();
+
 
     MFnTransform fnTransform(pathBones_[j], &status);
     CHECK_MSTATUS_AND_RETURN_IT(status);
@@ -335,9 +342,11 @@ MStatus DemBonesCmd::readMeshSequence(Model& model, double startFrame, double en
         model.v.col(i).segment<3>((start + f) * 3) << points[i].x, points[i].y, points[i].z;
       }
 
-      for (int j = 0; j < model.nB; ++j) {
-        model.m.blk4(f, j) =
-            toMatrix4d(pathBones_[j].inclusiveMatrix()) * model.bind.blk4(s, j).inverse();
+
+#pragma omp parallel for
+      for (int j = 0; j < model_.nB; ++j) {
+        model_.m.blk4(f, j) = toMatrix4d(pathBones_[j].inclusiveMatrix()) * bindInverse[j];
+
       }
     }
     model.fStart(s + 1) = model.fStart(s) + model.nF;
