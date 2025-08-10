@@ -9,8 +9,10 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include <Eigen/StdVector>
+#include <Eigen/SparseCholesky>  // added for SimplicialLDLT (Cholesky)
 #include <algorithm>
 #include <queue>
+#include <cmath>
 
 #include "ConvexLS.h"
 
@@ -110,6 +112,9 @@ class DemBones {
   //! [@c parameter] Epsilon for weights solver, @c default = 1e-15
   _Scalar weightEps;
 
+  //! [@c parameter] Smooth solver policy: 0 = Auto (LDLT then fallback LU), 1 = LDLT, 2 = LU
+  int smoothSolverPolicy;
+
   /** @brief Constructor and setting default parameters
    */
   DemBones()
@@ -123,6 +128,7 @@ class DemBones {
         weightsSmooth(_Scalar(1e-4)),
         weightsSmoothStep(_Scalar(1)),
         weightEps(_Scalar(1e-15)),
+        smoothSolverPolicy(0),  // default: Auto
         iter(_iter),
         iterTransformations(_iterTransformations),
         iterWeights(_iterWeights) {
@@ -815,17 +821,22 @@ class DemBones {
   //! Size of the model=RMS distance to centroid
   _Scalar modelSize;
 
-  //! Laplacian matrix
+  //! Laplacian matrix (will store A = I + step * L_sym for smoothing)
   SparseMatrix laplacian;
 
-  //! LU factorization of Laplacian
-  Eigen::SparseLU<SparseMatrix> smoothSolver;
+  //! Smooth solvers: LDLT (preferred for SPD) and LU (fallback)
+  Eigen::SimplicialLDLT<SparseMatrix> smoothSolverLDLT;
+  Eigen::SparseLU<SparseMatrix>       smoothSolverLU;
+  bool                                smoothSolverUseLDLT;
 
-  /** Pre-compute Laplacian and LU factorization
+  /** Pre-compute Laplacian system (symmetric-normalized) and factorize
+      Build symmetric-normalized Laplacian: L_sym = I - D^{-1/2} W D^{-1/2}
+      Then A = I + weightsSmoothStep * L_sym (strictly SPD if step>0), so LDLT can be used directly.
    */
   void computeSmoothSolver() {
-    int nFV = (int)fv.size();
+    const int nFV = (int)fv.size();
 
+    // epsilon scale (similar spirit to original code)
     _Scalar epsDis = 0;
     for (int f = 0; f < nFV; f++) {
       int nf = (int)fv[f].size();
@@ -835,65 +846,122 @@ class DemBones {
         epsDis += (u.col(i) - u.col(j)).norm();
       }
     }
-    epsDis = epsDis * weightEps / (_Scalar)nS;
+    epsDis = epsDis * weightEps / (_Scalar)std::max(1, nS);
 
-    std::vector<Triplet, Eigen::aligned_allocator<Triplet>> triplet;
+    // Build symmetric adjacency W and degree d from polygon edges (same topology as original)
+    std::vector<Triplet, Eigen::aligned_allocator<Triplet>> tripW;
     VectorX d = VectorX::Zero(nV);
 
-#pragma omp parallel for
-    for (int f = 0; f < nFV; f++) {
-      int nf = (int)fv[f].size();
-      for (int g = 0; g < nf; g++) {
-        int i = fv[f][g];
-        int j = fv[f][(g + 1) % nf];
+#pragma omp parallel
+    {
+      std::vector<Triplet, Eigen::aligned_allocator<Triplet>> localW;
+      localW.reserve(64);
+      VectorX localD = VectorX::Zero(nV);
 
-        if (i < j) {
-          double val = 0;
-          for (int s = 0; s < nS; s++) {
-            double du = (u.vec3(s, i) - u.vec3(s, j)).norm();
-            for (int k = fStart(s); k < fStart(s + 1); k++)
-              val += pow(
-                  (v.vec3(k, i).template cast<_Scalar>() - v.vec3(k, j).template cast<_Scalar>())
-                          .norm() -
-                      du,
-                  2);
+#pragma omp for nowait
+      for (int f = 0; f < nFV; f++) {
+        int nf = (int)fv[f].size();
+        for (int g = 0; g < nf; g++) {
+          int i = fv[f][g];
+          int j = fv[f][(g + 1) % nf];
+
+          if (i < j) {
+            double val = 0.0;
+            for (int s = 0; s < nS; s++) {
+              double du = (u.vec3(s, i) - u.vec3(s, j)).norm();
+              for (int k = fStart(s); k < fStart(s + 1); k++) {
+                val += std::pow(
+                    (v.vec3(k, i).template cast<_Scalar>() - v.vec3(k, j).template cast<_Scalar>())
+                        .norm() -
+                        du,
+                    2.0);
+              }
+            }
+            val = 1.0 / (std::sqrt(val / std::max(1, nF)) + epsDis);
+
+            // symmetric contribution
+            localW.emplace_back(i, j, val);
+            localW.emplace_back(j, i, val);
+            localD(i) += val;
+            localD(j) += val;
           }
-          val = 1 / (sqrt(val / nF) + epsDis);
-
-#pragma omp critical
-          triplet.push_back(Triplet(i, j, -val));
-#pragma omp atomic
-          d(i) += val;
-
-#pragma omp critical
-          triplet.push_back(Triplet(j, i, -val));
-#pragma omp atomic
-          d(j) += val;
         }
+      }
+
+#pragma omp critical
+      {
+        tripW.insert(tripW.end(), localW.begin(), localW.end());
+        d.noalias() += localD;
       }
     }
 
-    for (int i = 0; i < nV; i++) triplet.push_back(Triplet(i, i, d(i)));
+    SparseMatrix W(nV, nV);
+    W.setFromTriplets(tripW.begin(), tripW.end());
 
-    laplacian.resize(nV, nV);
-    laplacian.setFromTriplets(triplet.begin(), triplet.end());
+    // D^{-1/2}
+    VectorX invSqrtD(nV);
+    for (int i = 0; i < nV; ++i) {
+      const _Scalar di = d(i);
+      invSqrtD(i) = (di > _Scalar(0)) ? _Scalar(1) / std::sqrt(di) : _Scalar(1);
+    }
 
-    for (int i = 0; i < nV; i++)
-      if (d(i) != 0) laplacian.row(i) /= d(i);
+    // S = D^{-1/2} * W * D^{-1/2} (scale rows then cols in-place)
+    for (int k = 0; k < W.outerSize(); ++k) {
+      for (typename SparseMatrix::InnerIterator it(W, k); it; ++it) {
+        it.valueRef() *= invSqrtD(it.row());
+      }
+    }
+    for (int k = 0; k < W.outerSize(); ++k) {
+      for (typename SparseMatrix::InnerIterator it(W, k); it; ++it) {
+        it.valueRef() *= invSqrtD(it.col());
+      }
+    }
 
-    laplacian = weightsSmoothStep * laplacian + SparseMatrix((VectorX::Ones(nV)).asDiagonal());
-    smoothSolver.compute(laplacian);
+    // L_sym = I - S
+    SparseMatrix I(nV, nV); I.setIdentity();
+    laplacian = I - W;
+
+    // A = I + step * L_sym  (strict SPD for step>0)
+    if (weightsSmoothStep != _Scalar(0)) {
+      laplacian = I + weightsSmoothStep * laplacian;
+    } else {
+      laplacian = I;
+    }
+
+    // Tiny diagonal regularization for numerical stability (negligible effect on accuracy)
+    if (weightEps > _Scalar(0)) {
+      SparseMatrix reg(nV, nV); reg.setIdentity();
+      laplacian += (weightEps * _Scalar(1e-6)) * reg;
+    }
+
+    // Factorization policy: Auto -> try LDLT then fallback to LU; LDLT -> force; LU -> force
+    smoothSolverUseLDLT = false;
+    if (smoothSolverPolicy == 2) {
+      smoothSolverLU.compute(laplacian);
+    } else {
+      smoothSolverLDLT.compute(laplacian);
+      if (smoothSolverLDLT.info() == Eigen::Success || smoothSolverPolicy == 1) {
+        smoothSolverUseLDLT = (smoothSolverLDLT.info() == Eigen::Success);
+      }
+      if (!smoothSolverUseLDLT) {
+        smoothSolverLU.compute(laplacian);
+      }
+    }
   }
 
   //! Smoothed skinning weights
   MatrixX ws;
 
   /** Implicit skinning weights Laplacian smoothing
+      Solve (I + step * L_sym) * ws^T = w^T
    */
   void compute_ws() {
     ws = w.transpose();
 #pragma omp parallel for
-    for (int j = 0; j < nB; j++) ws.col(j) = smoothSolver.solve(ws.col(j));
+    for (int j = 0; j < nB; j++) {
+      if (smoothSolverUseLDLT) ws.col(j) = smoothSolverLDLT.solve(ws.col(j));
+      else                     ws.col(j) = smoothSolverLU.solve(ws.col(j));
+    }
     ws.transposeInPlace();
 
 #pragma omp parallel for
