@@ -20,7 +20,7 @@
 #include <string>
 
 #include "DemBones/DemBonesExt.h"   // project-local
-#include "common.h"        // getDagPath/getDependNode helpers
+#include "common.h"                 // getDagPath/getDependNode helpers
 
 // Maya 2025 uses versioned namespaces. Bring symbols into scope.
 using namespace Autodesk::Maya::OpenMaya20250000;
@@ -30,11 +30,9 @@ using namespace Autodesk::Maya::OpenMaya20250000;
   #define DEM_BONES_DEM_BONES_MAT_BLOCKS_UNDEFINED
 #endif
 
-// A small extension class to tap into progress window if desired.
-// You may keep these callbacks no-op if you prefer.
+// Small extension: progress callback each global iteration.
 struct MyDemBones : public Dem::DemBonesExt<double, float> {
   using Base = Dem::DemBonesExt<double, float>;
-  // Advance one progress step at the start of each global iteration.
   void cbIterBegin() override {
     if (!MProgressWindow::isCancelled()) {
       MProgressWindow::advanceProgress(1);
@@ -99,11 +97,11 @@ private:
                        const MDagPath& pathJoint,
                        const MString& attributeName);
 
-  MStatus setSkinCluster(const std::vector<std::string>& boneNames,
+  MStatus setSkinCluster(const std::vector<std::string>& name,
                          const Eigen::SparseMatrix<double>& w,
                          const Eigen::MatrixXd& gb);
 
-  static Eigen::Matrix4d toMatrix4d(const MMatrix& mm);
+  Eigen::Matrix4d toMatrix4d(const MMatrix& m);
 
 private:
   MDagPath      pathMesh_;

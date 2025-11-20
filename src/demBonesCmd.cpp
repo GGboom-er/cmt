@@ -196,7 +196,7 @@ MSyntax DemBonesCmd::newSyntax() {
   syntax.addFlag(kStartFrameShort,        kStartFrameLong,        MSyntax::kDouble);
   syntax.addFlag(kEndFrameShort,          kEndFrameLong,          MSyntax::kDouble);
   syntax.addFlag(kExistingBonesShort,     kExistingBonesLong,     MSyntax::kString);
-  syntax.makeFlagMultiUse(kExistingBonesShort);
+  syntax.makeFlagMultiUse(kExistingBonesShort); // <- multi-use flag for -eb  ✅  :contentReference[oaicite:3]{index=3}
   // New: smoothing solver policy ("auto" | "ldlt" | "lu")
   syntax.addFlag(kSmoothSolverShort,      kSmoothSolverLong,      MSyntax::kString);
 
@@ -238,9 +238,9 @@ MStatus DemBonesCmd::doIt(const MArgList& argList) {
   sel.getDagPath(0, pathMesh_);
   CHECK_MSTATUS_AND_RETURN_IT(getMeshShapeNode_local(pathMesh_));
 
-  // Multiple -eb allowed
+  // Multiple -eb allowed (Python list expands into multi-use)  :contentReference[oaicite:4]{index=4}
   pathBones_.clear();
-  for (unsigned int useIdx = 0;; ++useIdx) {
+  for (unsigned int useIdx = 0;; ++useIdx) {   // <- 从索引0开始线性读取  ✅  :contentReference[oaicite:5]{index=5}
     MString jname;
     if (argData.getFlagArgument(kExistingBonesShort, useIdx, jname) != MS::kSuccess) break;
     MDagPath p;
@@ -291,7 +291,7 @@ MStatus DemBonesCmd::doIt(const MArgList& argList) {
     else model_.smoothSolverPolicy = 0;
   }
 
-  // Echo parameters once
+  // Echo parameters once (shows *initial* bones coming from -eb)
   logInvocationSummary(pathMesh_, pathBones_, startFrame, endFrame, model_);
 
   // Progress protocol: frames + global iters + 1
@@ -314,17 +314,18 @@ MStatus DemBonesCmd::doIt(const MArgList& argList) {
   status = readBindPose();
   CHECK_MSTATUS_AND_GOTO_CLEANUP(status);
 
-  // Bones count extend if requested
+  // Bones count extend if requested  —— “增加骨骼(Increment)” 语义
   int requestedAdditionalBones = 0;
   if (argData.isFlagSet(kBonesShort)) argData.getFlagArgument(kBonesShort, 0, requestedAdditionalBones);
+  if (requestedAdditionalBones < 0) requestedAdditionalBones = 0; // clamp
   if (model_.nB == 0) {
     if (requestedAdditionalBones == 0) {
       MGlobal::displayError("No joints found and -b/-bones not set or 0.");
       status = MS::kInvalidParameter; goto cleanup;
     }
-    model_.nB = requestedAdditionalBones;
+    model_.nB = requestedAdditionalBones;          // no eb -> nB = b
   } else {
-    model_.nB += requestedAdditionalBones;
+    model_.nB += requestedAdditionalBones;         // with eb -> nB = len(eb) + b
   }
 
   // Compute
