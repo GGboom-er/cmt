@@ -27,6 +27,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(MSVC)
     add_compile_options(/bigobj)                     # Eigen Debug 需要
+    add_compile_options(/utf-8)                      # UTF-8 源文件编码支持
 endif()
 
 # ---------- 4. OpenMP (并行库 / Parallel Library) -----------------------------------
@@ -35,6 +36,15 @@ if(OpenMP_CXX_FOUND)
     add_compile_options(${OpenMP_CXX_FLAGS})
     list(APPEND PACKAGE_LIBS ${OpenMP_CXX_LIB_NAMES})# 交给 build_plugin 统一处理
 endif()
+
+# ---------- 4.5 Qt6 (Maya 2025 GUI Framework) --------------------------------------
+# Maya 2025 ships with full Qt6 SDK in Qt/Qt directory
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+set(Qt6_DIR "${MAYA_ROOT}/Qt/Qt/lib/cmake/Qt6")
+set(CMAKE_PREFIX_PATH "${MAYA_ROOT}/Qt/Qt/lib/cmake")
+find_package(Qt6 COMPONENTS Core Gui Widgets REQUIRED HINTS "${MAYA_ROOT}/Qt/Qt/lib/cmake")
 
 # ---------- 5. 第三方头文件 (Eigen) -------------------------------------------------
 set(EIGEN3_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third-party/Eigen"
@@ -50,6 +60,10 @@ set(SOURCE_FILES
     swingTwistNode.h           swingTwistNode.cpp
     swingTwistCmd.h            swingTwistCmd.cpp
     demBonesCmd.h              demBonesCmd.cpp
+    demBonesCache.h
+    demBonesCacheCmd.h         demBonesCacheCmd.cpp
+    demBonesUICmd.h            demBonesUICmd.cpp
+    demBonesWindow.h           demBonesWindow.cpp
     rbfNode.h                  rbfNode.cpp
     ikRigNode.h                ikRigNode.cpp
 )
@@ -86,9 +100,15 @@ list(APPEND INCLUDE_DIRS
 # 由 DevKit 宏 build_plugin() 生成 .mll / .so / .bundle
 build_plugin()
 
+# Link Qt6 libraries for native GUI (use plain signature to match pluginEntry.cmake)
+target_link_libraries(${PROJECT_NAME} Qt6::Core Qt6::Gui Qt6::Widgets)
+
 # ---------- 10. 安装规则 (Installation Rule) ----------------------------------------
+# 固定输出到 Release 配置的指定路径
+set(FIXED_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../plug-ins/maya2025/Release")
 install(TARGETS ${PROJECT_NAME} ${MAYA_TARGET_TYPE}
-        DESTINATION "plug-ins/${MAYA_VERSION}")
+        CONFIGURATIONS Release
+        DESTINATION "${FIXED_OUTPUT_DIR}")
 
 # ---------- 11. 日志输出 (Log) ------------------------------------------------------
 message(STATUS "✅ Maya SDK      : ${MAYA_ROOT}")

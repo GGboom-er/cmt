@@ -65,3 +65,20 @@ target/
 # PyCharm
 .idea
 build.*/
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# C++ build artifacts
+*.pdb
+*.exp
+*.lib
+*.obj
+*.ilk
+
+# Project temp files
+test_simulation.cpp
+DEMBONES_ALGORITHM.md
+INTERPOLATION_DEMBONES.md
+FEATURE_STATUS.md
