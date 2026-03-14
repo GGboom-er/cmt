@@ -77,6 +77,21 @@ CLAUDE.md
 *.obj
 *.ilk
 
+# Visual Studio
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+
+# CMake generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+cmtConfig.h
+x64/
+*.dir/
+
 # Project temp files
 test_simulation.cpp
 DEMBONES_ALGORITHM.md
