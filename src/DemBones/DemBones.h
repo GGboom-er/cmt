@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <queue>
 #include <cmath>
+#include <limits>
 
 #include "ConvexLS.h"
 
@@ -247,7 +248,8 @@ class DemBones {
           prevNB = nB;
         }
         m.conservativeResize(nF * 4, nB * 4);
-        if (origM.rows() && m.cols() >= origM.cols()) {
+        if (origM.rows() > 0 && origM.cols() > 0 &&
+            m.rows() >= origM.rows() && m.cols() >= origM.cols()) {
           m.block(0, 0, origM.rows(), origM.cols()) = origM;
         }
         labelToWeights();
@@ -351,7 +353,7 @@ class DemBones {
         Eigen::ArrayXi idx = Eigen::ArrayXi::LinSpaced(nB, 0, nB - 1);
         std::sort(idx.data(), idx.data() + nB, [&x](int i1, int i2) { return x(i1) > x(i2); });
         int nnzi = std::min(nnz, nB);
-        while (x(idx(nnzi - 1)) < weightEps) nnzi--;
+        while (nnzi > 1 && x(idx(nnzi - 1)) < weightEps) nnzi--;
 
         x = indexing_vector(w.col(i).toDense().cwiseMax(0.0), idx.head(nnzi));
         _Scalar s = x.sum();
@@ -605,7 +607,7 @@ class DemBones {
 
     // Seed & cluster error
     Eigen::VectorXi seed = Eigen::VectorXi::Constant(nB, -1);
-    VectorX gMax(nB);
+    VectorX gMax = VectorX::Constant(nB, std::numeric_limits<_Scalar>::lowest());
     VectorX ce = VectorX::Zero(nB);
 
 #pragma omp parallel for

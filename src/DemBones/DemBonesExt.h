@@ -109,7 +109,7 @@ class DemBonesExt : public DemBones<_Scalar, _AniMeshScalar> {
     bind.resize(0, 0);
     preMulInv.resize(0, 0);
     rotOrder.resize(0, 0);
-    DemBones::clear();
+    DemBones<_Scalar, _AniMeshScalar>::clear();
   }
 
   /** @brief Local rotations, translations and global bind matrices of a subject
@@ -144,16 +144,24 @@ class DemBonesExt : public DemBones<_Scalar, _AniMeshScalar> {
       temp.head(parent.size()) = parent;
       parent = temp;
     }
-    if (preMulInv.size() != 16 * nS * nB) {
-      // Preserve any existing values
+    if (preMulInv.rows() != nS * 4 || preMulInv.cols() != nB * 4) {
+      // Preserve any existing values with safe bounds checking
       MatrixX temp = MatrixX::Identity(4, 4).replicate(nS, nB);
-      temp.block(0, 0, preMulInv.rows(), preMulInv.cols()) = preMulInv;
+      int copyRows = std::min((int)preMulInv.rows(), (int)temp.rows());
+      int copyCols = std::min((int)preMulInv.cols(), (int)temp.cols());
+      if (copyRows > 0 && copyCols > 0) {
+        temp.block(0, 0, copyRows, copyCols) = preMulInv.block(0, 0, copyRows, copyCols);
+      }
       preMulInv = temp;
     }
-    if (rotOrder.size() != 3 * nS * nB) {
-      // Preserve any existing values
+    if (rotOrder.rows() != nS * 3 || rotOrder.cols() != nB) {
+      // Preserve any existing values with safe bounds checking
       Eigen::MatrixXi temp = Eigen::Vector3i(0, 1, 2).replicate(nS, nB);
-      temp.block(0, 0, rotOrder.rows(), rotOrder.cols()) = rotOrder;
+      int copyRows = std::min((int)rotOrder.rows(), (int)temp.rows());
+      int copyCols = std::min((int)rotOrder.cols(), (int)temp.cols());
+      if (copyRows > 0 && copyCols > 0) {
+        temp.block(0, 0, copyRows, copyCols) = rotOrder.block(0, 0, copyRows, copyCols);
+      }
       rotOrder = temp;
     }
 
@@ -223,14 +231,20 @@ class DemBonesExt : public DemBones<_Scalar, _AniMeshScalar> {
      4*@p j, 4, 4) is the bind matrix of bone @p j
   */
   void computeBind(int s, MatrixX& b) {
-    if (bind.size() != nS * 4, nB * 4) {
+    if (bind.rows() != nS * 4 || bind.cols() != nB * 4) {
       MatrixX bindOrig = bind;
       bind.resize(nS * 4, nB * 4);
-      MatrixX b;
-      for (int k = 0; k < nS; k++) computeCentroids(k, b);
-      bind.block(4 * s, 0, 4, 4 * nB) = b;
+      MatrixX bTemp;
+      for (int k = 0; k < nS; k++) {
+        computeCentroids(k, bTemp);
+        bind.block(4 * k, 0, 4, 4 * nB) = bTemp;
+      }
       // Override bind pose with existing bind pose if preserving existing bones
-      bind.block(0, 0, bindOrig.rows(), bindOrig.cols()) = bindOrig;
+      int copyRows = std::min((int)bindOrig.rows(), (int)bind.rows());
+      int copyCols = std::min((int)bindOrig.cols(), (int)bind.cols());
+      if (copyRows > 0 && copyCols > 0) {
+        bind.block(0, 0, copyRows, copyCols) = bindOrig.block(0, 0, copyRows, copyCols);
+      }
     }
 
     switch (bindUpdate) {

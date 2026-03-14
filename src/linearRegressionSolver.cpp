@@ -176,7 +176,8 @@ VectorXd LinearRegressionSolver::solve(const VectorXd& inputValues,
           inputDistance[idx++] = swingDistance;
           inputDistance[idx++] = twistDistance;
         }
-        applyRbf(inputDistance.segment(startIdx, inputQuatCount * 2), rbf_, sampleRadius_[s1]);
+        auto inputSeg = inputDistance.segment(startIdx, inputQuatCount * 2);
+        applyRbf(inputSeg, rbf_, sampleRadius_[s1]);
       }
     }
   }
